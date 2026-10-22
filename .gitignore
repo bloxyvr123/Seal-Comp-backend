@@ -1,0 +1,16 @@
+﻿.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+.env
+.env.*
+!.env.example
+
+Data.db
+discord_devs.db
+*.db
+jwt_secret.key
+*.key
+backups/
+*.bak

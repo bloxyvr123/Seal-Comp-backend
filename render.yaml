@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: xera-backend
+    runtime: python
+    plan: starter            # a persistent disk needs a paid plan; free has no disk
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn backend:application --workers 1 --threads 8 --bind 0.0.0.0:$PORT
+    healthCheckPath: /health
+    disk:
+      name: xera-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: XERA_DATA_DIR
+        value: /var/data
+      - key: XERA_DISCORD_DEV_SECRET   # your admin password; read it in Dashboard > Environment
+        generateValue: true
+      - key: XERA_JWT_SECRET             # signs login tokens; keep it, changing it logs everyone out
+        generateValue: true
+      - key: XERA_TRUSTED_PROXY_HOPS   # verify after deploy, see GUIDE.md section 8.6
+        value: "1"
+      - key: XERA_UNLOCK_ALL_AVATAR
+        value: "0"
+      - key: XERA_META_ACCESS_TOKEN
+        sync: false              # Render asks you for these when you create the Blueprint
+      - key: XERA_PHOTON_APP_ID
+        sync: false
+      - key: XERA_PHOTON_VOICE_APP_ID
+        sync: false
+      - key: XERA_GAME_DATA_URL
+        sync: false

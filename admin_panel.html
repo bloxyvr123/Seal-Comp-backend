@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Xera Admin</title>
+<style>
+:root{--bg:#eef0f2;--pn:#fff;--tx:#14181c;--mu:#5d6770;--ln:#d5dade;--ac:#0b7a75;--ac2:#e6f3f2;--bad:#b3261e}
+@media(prefers-color-scheme:dark){:root{--bg:#101315;--pn:#181c1f;--tx:#e8ecee;--mu:#8d98a0;--ln:#2a3034;--ac:#4fd1c5;--ac2:#14302e;--bad:#ff7a70}}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 "Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+#app{display:none;min-height:100vh}
+nav{position:fixed;inset:0 auto 0 0;width:180px;background:var(--pn);border-right:1px solid var(--ln);padding:16px 10px}
+nav h1{font:700 17px Georgia,serif;margin:0 6px 14px}
+nav button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--tx);padding:8px 10px;border-radius:6px;font:inherit;cursor:pointer}
+nav button.on{background:var(--ac2);color:var(--ac);font-weight:600}
+main{margin-left:180px;padding:20px 24px;max-width:980px}
+@media(max-width:700px){nav{position:static;width:auto;display:flex;flex-wrap:wrap;gap:4px}nav h1{width:100%}nav button{width:auto}main{margin:0;padding:14px}}
+h2{margin:0 0 12px;font-size:18px}h3{margin:18px 0 8px;font-size:14px}
+.bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+input,select,button.b{font:inherit;padding:7px 10px;border:1px solid var(--ln);border-radius:6px;background:var(--pn);color:var(--tx)}
+input{min-width:0}input.w{flex:1;min-width:160px}
+button.b{background:var(--ac);color:var(--pn);border-color:var(--ac);cursor:pointer;font-weight:600}
+button.b.alt{background:none;color:var(--tx);border-color:var(--ln)}button.b.bad{background:var(--bad);border-color:var(--bad);color:#fff}
+:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+table{width:100%;border-collapse:collapse;background:var(--pn);border:1px solid var(--ln)}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--ln);vertical-align:top;overflow-wrap:anywhere}
+th{color:var(--mu);font-weight:600;font-size:12px}tr[data-a]{cursor:pointer}tr[data-a]:hover{background:var(--ac2)}
+.box{background:var(--pn);border:1px solid var(--ln);padding:14px;margin-bottom:14px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{border:1px solid var(--ln);border-radius:12px;padding:2px 4px 2px 10px;font-size:12px}
+.chip button{border:0;background:none;color:var(--bad);cursor:pointer;font-size:14px}
+.mu{color:var(--mu)}.ok{color:var(--ac)}
+#login{max-width:340px;margin:18vh auto;padding:0 16px}#login h1{font:700 24px Georgia,serif}
+#toast{position:fixed;bottom:16px;right:16px;background:var(--tx);color:var(--bg);padding:9px 14px;border-radius:6px;display:none}
+</style>
+</head>
+<body>
+<div id="login">
+  <h1>Xera Admin</h1>
+  <p class="mu">Enter the admin secret to continue.</p>
+  <div class="bar"><input id="sec" class="w" type="password" placeholder="Admin secret" autocomplete="current-password">
+  <button class="b" data-a="login">Sign in</button></div>
+  <p id="lerr" class="mu"></p>
+</div>
+<div id="app">
+  <nav>
+    <h1>Xera Admin</h1>
+    <button data-a="tab" data-t="players">Players</button>
+    <button data-a="tab" data-t="cosmetics">Cosmetics</button>
+    <button data-a="tab" data-t="promos">Promo codes</button>
+    <button data-a="tab" data-t="bundles">Bundles</button>
+    <button data-a="tab" data-t="rooms">Private rooms</button>
+    <button data-a="tab" data-t="mod">Moderation</button>
+    <button data-a="tab" data-t="audit">Audit log</button>
+    <button data-a="out">Sign out</button>
+  </nav>
+  <main id="main"></main>
+</div>
+<datalist id="cat"></datalist>
+<div id="toast" role="status"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const when=t=>t?new Date(typeof t==='number'?t*1000:t).toLocaleString():'';
+let T=null,CAT=[],UNLOCK=true,BUN=[];
+try{T=sessionStorage.getItem('xt')}catch(e){}
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',3200)}
+async function api(p,o={}){
+  const r=await fetch(p,{method:o.method||'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+T},body:o.body?JSON.stringify(o.body):undefined});
+  const j=await r.json().catch(()=>({}));
+  if(r.status===401&&T){out();throw Error('Session expired. Sign in again.')}
+  if(!r.ok)throw Error(j.error||('Request failed ('+r.status+')'));
+  return j}
+async function run(fn){try{await fn()}catch(e){toast(e.message)}}
+function show(){$('#login').style.display=T?'none':'block';$('#app').style.display=T?'block':'none'}
+function out(){T=null;try{sessionStorage.removeItem('xt')}catch(e){}show()}
+async function boot(){show();if(!T)return;
+  const c=await api('/admin/cosmetics');CAT=c.items;UNLOCK=c.unlockAllOnLogin;
+  $('#cat').innerHTML=CAT.map(i=>`<option value="${esc(i.id)}">`).join('');tab('players')}
+function tab(t){document.querySelectorAll('nav button[data-t]').forEach(b=>b.classList.toggle('on',b.dataset.t===t));run(()=>V[t]())}
+const list=s=>s.split(',').map(x=>x.trim()).filter(Boolean);
+
+const V={
+async players(q=''){
+  const {users}=await api('/admin/users?q='+encodeURIComponent(q));
+  $('#main').innerHTML=`<h2>Players</h2><div class=bar><input id=q class=w placeholder="Username, user ID or IP" value="${esc(q)}"><button class=b data-a=find>Search</button></div>
+  <table><tr><th>Name<th>Hard<th>Soft<th>Research<th>Last seen</tr>${users.map(u=>`<tr data-a=open data-id="${esc(u.user_id)}"><td>${esc(u.username)}<td>${esc(u.hard)}<td>${esc(u.soft)}<td>${esc(u.research)}<td>${esc(when(u.update_time))}</tr>`).join('')||'<tr><td colspan=5 class=mu>No players match. Try a shorter name.</tr>'}</table>`},
+async open(id){
+  const d=await api('/admin/users/'+encodeURIComponent(id)),u=d.user;BUN=(await api('/admin/bundles')).bundles;
+  const shown=d.items.slice(0,80);
+  $('#main').innerHTML=`<p><button class="b alt" data-a=tab data-t=players>Back to players</button></p>
+  <h2>${esc(u.username)} ${d.banned?'<span class=ok style="color:var(--bad)">(banned)</span>':''}</h2>
+  <p class=mu>ID ${esc(u.user_id)} &middot; IP ${esc(u.ip)} &middot; joined ${esc(when(u.create_time))} &middot; ${d.reportsAgainst} reports against</p>
+  <div class=box><h3 style="margin-top:0">Currency</h3><div class=bar>
+   <input id=cs type=number placeholder="Soft (${esc(d.wallet.soft)})"><input id=ch type=number placeholder="Hard (${esc(d.wallet.hard)})"><input id=cr type=number placeholder="Research (${esc(d.wallet.research)})">
+   <button class=b data-a=cur data-n="${esc(u.username)}" data-id="${esc(u.user_id)}">Add / subtract</button></div></div>
+  <div class=box><h3 style="margin-top:0">Cosmetics (${d.items.length})</h3>
+   ${UNLOCK?'<p class=mu>Every player is auto-given the full catalog on login, so changes here are overwritten. Set XERA_UNLOCK_ALL_AVATAR=0 first.</p>':''}
+   <div class=bar><input id=gi class=w list=cat placeholder="Item IDs, comma separated"><button class=b data-a=give data-id="${esc(u.user_id)}">Give items</button></div>
+   ${BUN.length?`<div class=bar><select id=gb>${BUN.map(b=>`<option>${esc(b.name)}`).join('')}</select><button class=b data-a=givebundle data-id="${esc(u.user_id)}">Give bundle</button></div>`:''}
+   <div class=chips>${shown.map(i=>`<span class=chip>${esc(i)} <button title="Take away" data-a=take data-id="${esc(u.user_id)}" data-i="${esc(i)}">&times;</button></span>`).join('')||'<span class=mu>No cosmetics yet.</span>'}</div>
+   ${d.items.length>80?`<p class=mu>Showing 80 of ${d.items.length}.</p>`:''}</div>
+  <button class="b bad" data-a=ban data-n="${esc(u.username)}">Ban ${esc(u.username)}</button>`},
+async cosmetics(q='',cat=''){
+  const cats=[...new Set(CAT.map(i=>i.category))].sort();
+  const f=CAT.filter(i=>i.id.includes(q.toLowerCase())&&(!cat||i.category===cat));
+  $('#main').innerHTML=`<h2>Cosmetics</h2><div class=bar><input id=q class=w placeholder="Search items" value="${esc(q)}">
+  <select id=cc><option value="">All categories${cats.map(c=>`<option${c===cat?' selected':''}>${esc(c)}`).join('')}</select><button class=b data-a=fc>Filter</button></div>
+  <p class=mu>${f.length} of ${CAT.length} items${f.length>150?' (showing 150)':''}.</p>
+  <table><tr><th>Item<th>Category<th>Price<th></tr>${f.slice(0,150).map(i=>`<tr><td>${esc(i.id)}<td>${esc(i.category)}<td>${esc(i.price)}${i.custom?' (custom)':''}<td><button class="b alt" data-a=giveitem data-i="${esc(i.id)}">Give to...</button> <button class="b alt" data-a=price data-i="${esc(i.id)}">Set price</button></tr>`).join('')}</table>`},
+async promos(){
+  const {promos}=await api('/admin/promos');
+  $('#main').innerHTML=`<h2>Promo codes</h2><div class=box><div class=bar><input id=pc placeholder="CODE"><input id=ps type=number placeholder=Soft><input id=ph type=number placeholder=Hard><input id=pr type=number placeholder=Research><input id=pm type=number placeholder="Max uses (-1 = unlimited)"></div>
+  <div class=bar><input id=pi class=w list=cat placeholder="Cosmetic IDs, comma separated"><button class=b data-a=savepromo>Save code</button></div></div>
+  <table><tr><th>Code<th>Soft<th>Hard<th>Research<th>Used<th>Items<th></tr>${promos.map(p=>`<tr><td>${esc(p.code)}<td>${esc(p.reward_soft)}<td>${esc(p.reward_hard)}<td>${esc(p.reward_research)}<td>${esc(p.times_redeemed)}/${p.max_redemptions<0?'&infin;':esc(p.max_redemptions)}<td>${esc(JSON.parse(p.reward_avatar_items||'[]').join(', '))}<td><button class="b alt" data-a=delpromo data-c="${esc(p.code)}">Delete</button></tr>`).join('')||'<tr><td colspan=7 class=mu>No codes yet. Create one above.</tr>'}</table>`},
+async mod(){
+  const [r,b]=await Promise.all([api('/admin/reports?limit=100'),api('/admin/bans')]);
+  $('#main').innerHTML=`<h2>Moderation</h2><div class=bar><input id=bn class=w placeholder="Username or IP to ban"><input id=br class=w placeholder="Reason"><button class="b bad" data-a=banbox>Ban</button></div>
+  <h3>Bans</h3><table><tr><th>Type<th>Value<th>Reason<th></tr>${b.bans.map(x=>`<tr><td>${esc(x.kind)}<td>${esc(x.value)}<td>${esc(x.reason)}<td><button class="b alt" data-a=unban data-k="${esc(x.kind)}" data-v="${esc(x.value)}">Unban</button></tr>`).join('')||'<tr><td colspan=4 class=mu>No bans.</tr>'}</table>
+  <h3>Reports</h3><table><tr><th>When<th>Reporter<th>Target<th>Reason</tr>${r.reports.map(x=>`<tr><td>${esc(when(x.created_at))}<td>${esc(x.reporter)}<td>${esc(x.target)}<td>${esc(x.reason)}</tr>`).join('')||'<tr><td colspan=4 class=mu>No reports.</tr>'}</table>`},
+async bundles(){
+  const {bundles}=await api('/admin/bundles');BUN=bundles;
+  $('#main').innerHTML=`<h2>Bundles</h2><p class=mu>A bundle is a saved group of cosmetics you can give in one click.</p><div class=box><div class=bar><input id=bnm placeholder="Bundle name"><input id=bit class=w list=cat placeholder="Cosmetic IDs, comma separated"><button class=b data-a=savebundle>Save bundle</button></div></div>
+  <table><tr><th>Name<th>Items<th></tr>${bundles.map(b=>`<tr><td>${esc(b.name)}<td>${esc(b.items.join(', '))}<td><button class="b alt" data-a=givebundle data-n="${esc(b.name)}">Give to...</button> <button class="b alt" data-a=delbundle data-n="${esc(b.name)}">Delete</button></tr>`).join('')||'<tr><td colspan=3 class=mu>No bundles yet. Create one above.</tr>'}</table>`},
+async rooms(q=''){
+  const {rooms}=await api('/admin/rooms?q='+encodeURIComponent(q));
+  $('#main').innerHTML=`<h2>Private rooms</h2><div class=bar><input id=rq class=w placeholder="Room code or owner name" value="${esc(q)}"><button class=b data-a=findroom>Search</button></div>
+  <table><tr><th>Code<th>Owner<th>Expires<th>Members<th>Banned<th></tr>${rooms.map(r=>`<tr><td>${esc(r.code)}<td>${esc(r.owner)}<td>${esc(when(r.expiresAt))}<td>${r.members}<td>${r.banned}<td><button class="b alt" data-a=extend data-c="${esc(r.code)}">Extend</button> <button class="b alt" data-a=delroom data-c="${esc(r.code)}">Delete</button></tr>`).join('')||'<tr><td colspan=6 class=mu>No rooms found.</tr>'}</table>`},
+async audit(){
+  const {audit}=await api('/admin/audit');
+  $('#main').innerHTML=`<h2>Audit log</h2><table><tr><th>When<th>IP<th>Action<th>Detail</tr>${audit.map(x=>`<tr><td>${esc(when(x.ts))}<td>${esc(x.ip)}<td>${esc(x.action)}<td>${esc(x.detail)}</tr>`).join('')}</table>`}
+};
+
+const A={
+async login(){try{const r=await fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret:$('#sec').value})});
+  const j=await r.json();if(!r.ok){$('#lerr').textContent=r.status===429?'Too many attempts. Wait a minute.':'Wrong secret.';return}
+  T=j.token;try{sessionStorage.setItem('xt',T)}catch(e){}$('#sec').value='';boot()}catch(e){$('#lerr').textContent='Cannot reach the server.'}},
+out,tab:d=>tab(d.t),
+find:()=>V.players($('#q').value),open:d=>V.open(d.id),fc:()=>V.cosmetics($('#q').value,$('#cc').value),
+async cur(d){await api('/admin/grant',{method:'POST',body:{username:d.n,soft:+$('#cs').value||0,hard:+$('#ch').value||0,research:+$('#cr').value||0}});toast('Currency updated');V.open(d.id)},
+async give(d){await api('/admin/cosmetics/grant',{method:'POST',body:{user:d.id,items:list($('#gi').value)}});toast('Items given');V.open(d.id)},
+async take(d){if(!confirm('Take '+d.i+' away?'))return;await api('/admin/cosmetics/revoke',{method:'POST',body:{user:d.id,items:[d.i]}});toast('Item removed');V.open(d.id)},
+async giveitem(d){const who=prompt('Give '+d.i+' to which username? Type ALL for every player.');if(!who)return;
+  if(who==='ALL'&&!confirm('Give '+d.i+' to EVERY player?'))return;
+  const r=await api('/admin/cosmetics/grant',{method:'POST',body:who==='ALL'?{all:true,items:[d.i]}:{user:who,items:[d.i]}});toast('Given to '+r.users+' player(s)')},
+async ban(d){if(!confirm('Ban '+d.n+'?'))return;await api('/admin/ban',{method:'POST',body:{username:d.n,reason:'Banned from admin panel'}});toast('Banned');V.open(d.n)},
+async banbox(){const v=$('#bn').value.trim();if(!v)return;const ip=/^[0-9a-f.:]+$/i.test(v)&&/[.:]/.test(v);
+  await api('/admin/ban',{method:'POST',body:{[ip?'ip':'username']:v,reason:$('#br').value}});toast('Banned');V.mod()},
+async unban(d){await api('/admin/unban',{method:'POST',body:{[d.k]:d.v}});toast('Unbanned');V.mod()},
+async savepromo(){await api('/admin/promos',{method:'POST',body:{code:$('#pc').value,soft:+$('#ps').value||0,hard:+$('#ph').value||0,research:+$('#pr').value||0,max:$('#pm').value===''?-1:+$('#pm').value,items:list($('#pi').value)}});toast('Promo code saved');V.promos()},
+async price(d){const v=prompt('New price for '+d.i+'? Leave empty to reset to the default.');if(v===null)return;
+  await api('/admin/cosmetics/price',{method:'POST',body:{item:d.i,price:v.trim()===''?null:+v}});CAT=(await api('/admin/cosmetics')).items;toast('Price saved');V.cosmetics($('#q').value,$('#cc').value)},
+async savebundle(){await api('/admin/bundles',{method:'POST',body:{name:$('#bnm').value,items:list($('#bit').value)}});toast('Bundle saved');V.bundles()},
+async delbundle(d){if(!confirm('Delete bundle '+d.n+'?'))return;await api('/admin/bundles/'+encodeURIComponent(d.n),{method:'DELETE'});toast('Deleted');V.bundles()},
+async givebundle(d){const name=d.n||$('#gb').value,b=BUN.find(x=>x.name===name);if(!b)return;
+  const who=d.id||prompt('Give "'+name+'" to which username? Type ALL for every player.');if(!who)return;
+  if(who==='ALL'&&!confirm('Give "'+name+'" to EVERY player?'))return;
+  const r=await api('/admin/cosmetics/grant',{method:'POST',body:who==='ALL'?{all:true,items:b.items}:{user:who,items:b.items}});toast('Given to '+r.users+' player(s)');if(d.id)V.open(d.id)},
+findroom:()=>V.rooms($('#rq').value),
+async extend(d){const n=prompt('Extend room '+d.c+' by how many days?','30');if(!n)return;await api('/admin/rooms/'+encodeURIComponent(d.c)+'/extend',{method:'POST',body:{days:+n}});toast('Extended');V.rooms($('#rq').value)},
+async delroom(d){if(!confirm('Delete room '+d.c+'? Its owner loses it.'))return;await api('/admin/rooms/'+encodeURIComponent(d.c),{method:'DELETE'});toast('Room deleted');V.rooms($('#rq').value)},
+async delpromo(d){if(!confirm('Delete code '+d.c+'?'))return;await api('/admin/promos/'+encodeURIComponent(d.c),{method:'DELETE'});toast('Deleted');V.promos()}
+};
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(el&&A[el.dataset.a])run(()=>A[el.dataset.a](el.dataset))});
+document.addEventListener('keydown',e=>{if(e.key!=='Enter')return;
+  if(e.target.id==='sec')run(A.login);else if(e.target.id==='rq')run(A.findroom);else if(e.target.id==='q'&&$('[data-a=find]'))run(A.find);else if(e.target.id==='q')run(A.fc)});
+run(boot);
+</script>
+</body>
+</html>
